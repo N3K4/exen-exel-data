@@ -12,13 +12,7 @@ function formatDate(value: any): string {
     const day = String(value.getDate()).padStart(2, '0');
     const month = String(value.getMonth() + 1).padStart(2, '0');
     const year = value.getFullYear();
-    const hours = String(value.getHours()).padStart(2, '0');
-    const minutes = String(value.getMinutes()).padStart(2, '0');
-    
-    if (hours === '00' && minutes === '00') {
-      return `${day}.${month}.${year}`;
-    }
-    return `${day}.${month}.${year} ${hours}:${minutes}`;
+    return `${day}.${month}.${year}`;
   }
   return String(value);
 }
@@ -35,16 +29,6 @@ function formatExcelDate(dateCode: { y: number; m: number; d: number; H?: number
   const day = String(dateCode.d).padStart(2, '0');
   const month = String(dateCode.m).padStart(2, '0');
   const year = dateCode.y;
-  
-  if (dateCode.H !== undefined && dateCode.M !== undefined) {
-    const hours = String(dateCode.H).padStart(2, '0');
-    const minutes = String(dateCode.M).padStart(2, '0');
-    if (hours === '00' && minutes === '00') {
-      return `${day}.${month}.${year}`;
-    }
-    return `${day}.${month}.${year} ${hours}:${minutes}`;
-  }
-  
   return `${day}.${month}.${year}`;
 }
 
