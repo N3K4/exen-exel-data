@@ -6,7 +6,7 @@ interface ExcelData {
   rows: string[][];
 }
 
-// Форматирование даты в читаемый вид
+// Форматирование даты в читаемый вид (ДД.ММ.ГГГГ)
 function formatDate(value: any): string {
   if (value instanceof Date) {
     const day = String(value.getDate()).padStart(2, '0');
@@ -15,13 +15,79 @@ function formatDate(value: any): string {
     const hours = String(value.getHours()).padStart(2, '0');
     const minutes = String(value.getMinutes()).padStart(2, '0');
     
-    // Если время 00:00, показываем только дату
     if (hours === '00' && minutes === '00') {
       return `${day}.${month}.${year}`;
     }
     return `${day}.${month}.${year} ${hours}:${minutes}`;
   }
   return String(value);
+}
+
+// Проверка, является ли формат ячейки форматом даты
+function isDateFormat(fmt: string): boolean {
+  if (!fmt) return false;
+  // Проверяем наличие символов даты в формате
+  return /[dmyDММY]/i.test(fmt) && !/^[#0,.]+$/.test(fmt);
+}
+
+// Форматирование даты из Excel serial number
+function formatExcelDate(dateCode: { y: number; m: number; d: number; H?: number; M?: number; S?: number }): string {
+  const day = String(dateCode.d).padStart(2, '0');
+  const month = String(dateCode.m).padStart(2, '0');
+  const year = dateCode.y;
+  
+  if (dateCode.H !== undefined && dateCode.M !== undefined) {
+    const hours = String(dateCode.H).padStart(2, '0');
+    const minutes = String(dateCode.M).padStart(2, '0');
+    if (hours === '00' && minutes === '00') {
+      return `${day}.${month}.${year}`;
+    }
+    return `${day}.${month}.${year} ${hours}:${minutes}`;
+  }
+  
+  return `${day}.${month}.${year}`;
+}
+
+// Fallback: конвертация серийного номера Excel в объект даты вручную
+function serialToDate(serial: number): { y: number; m: number; d: number; H: number; M: number; S: number } | null {
+  if (serial < 1 || serial > 200000) return null;
+  
+  // Excel base date: 30 декабря 1899 (с учётом бага Lotus 1-2-3)
+  const excelEpoch = new Date(1899, 11, 30);
+  const date = new Date(excelEpoch.getTime() + serial * 86400000);
+  
+  const year = date.getFullYear();
+  if (year < 1900 || year > 2100) return null;
+  
+  return {
+    y: year,
+    m: date.getMonth() + 1,
+    d: date.getDate(),
+    H: date.getHours(),
+    M: date.getMinutes(),
+    S: date.getSeconds()
+  };
+}
+
+// Конвертация ячейки-числа в дату (с fallback)
+function convertNumericDate(cellValue: number, cellFormat: string): string {
+  // Пробуем через SSF
+  try {
+    const dateCode = XLSX.SSF.parse_date_code(cellValue);
+    if (dateCode) {
+      return formatExcelDate(dateCode);
+    }
+  } catch {
+    // SSF недоступен — используем fallback
+  }
+  
+  // Fallback: ручная конвертация
+  const dateCode = serialToDate(cellValue);
+  if (dateCode) {
+    return formatExcelDate(dateCode);
+  }
+  
+  return String(cellValue);
 }
 
 function App() {
@@ -41,23 +107,48 @@ function App() {
 
     reader.onload = (event) => {
       const arrayBuffer = event.target?.result;
-      // cellDates: true — автоматически конвертирует даты Excel в объекты Date
-      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true, cellNF: true });
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
-      // raw: false — форматирует значения как строки, включая даты
-      const jsonData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
 
-      if (jsonData.length > 0) {
-        const headers = jsonData[0].map((h) => String(h));
-        const rows = jsonData.slice(1).map((row) => {
-          const paddedRow = row.map((cell) => {
-            // Если ячейка — объект Date, форматируем её
-            if (cell instanceof Date) {
-              return formatDate(cell);
-            }
-            return String(cell);
-          });
+      if (!sheet['!ref']) return;
+      const range = XLSX.utils.decode_range(sheet['!ref']);
+
+      const allRows: string[][] = [];
+
+      for (let R = range.s.r; R <= range.e.r; R++) {
+        const row: string[] = [];
+        for (let C = range.s.c; C <= range.e.c; C++) {
+          const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+          const cell = sheet[cellRef];
+
+          if (!cell) {
+            row.push('');
+            continue;
+          }
+
+          // Проверяем формат ячейки — является ли он форматом даты
+          const cellFormat = cell.z || '';
+          const isDate = isDateFormat(cellFormat);
+
+          if (cell.t === 'n' && isDate) {
+            // Число с форматом даты — конвертируем серийный номер
+            row.push(convertNumericDate(cell.v, cellFormat));
+          } else if (cell.t === 'd') {
+            // Уже объект Date (благодаря cellDates: true)
+            row.push(formatDate(cell.v));
+          } else {
+            // Обычное значение — используем отформатированную строку если есть
+            row.push(cell.w !== undefined ? String(cell.w) : String(cell.v));
+          }
+        }
+        allRows.push(row);
+      }
+
+      if (allRows.length > 0) {
+        const headers = allRows[0].map((h) => String(h));
+        const rows = allRows.slice(1).map((row) => {
+          const paddedRow = [...row];
           while (paddedRow.length < headers.length) {
             paddedRow.push('');
           }
