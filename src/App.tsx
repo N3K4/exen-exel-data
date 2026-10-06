@@ -274,23 +274,16 @@ function App() {
     );
   }
 
-  const previousRow = getRow(currentIndex - 1);
   const currentRow = getRow(currentIndex);
-  const nextRow = getRow(currentIndex + 1);
 
   // Row renderer
-  const renderRow = (
-    row: string[] | null,
-    rowIndex: number,
-    label: string,
-    isCurrent: boolean
-  ) => {
+  const renderRow = (row: string[] | null, label: string) => {
     if (!row) return null;
 
     return (
-      <div className={`rounded-xl overflow-hidden card-shadow ${isCurrent ? 'ring-2 ring-blue-200 bg-white' : 'bg-white'}`}>
+      <div className="rounded-xl overflow-hidden card-shadow ring-2 ring-blue-200 bg-white">
         {/* Row label */}
-        <div className={`px-4 py-2 border-b text-xs font-medium ${isCurrent ? 'bg-blue-50 text-blue-900 border-blue-100' : 'bg-gray-50/80 text-gray-500 border-gray-100'}`}>
+        <div className="px-4 py-2 border-b bg-blue-50 text-blue-900 border-blue-100 text-xs font-medium">
           {label}
         </div>
 
@@ -298,26 +291,22 @@ function App() {
         <table className="w-full">
           <tbody>
             {data.headers.map((header, colIdx) => {
-              const cellId = `${isCurrent ? 'curr' : rowIndex}-${colIdx}`;
+              const cellId = `curr-${colIdx}`;
               const isCopied = copiedCell === cellId;
               const value = row[colIdx];
 
               return (
                 <tr
                   key={cellId}
-                  className={`${isCurrent ? 'cell-hover' : ''} ${isCopied ? 'copied-flash' : ''} border-b border-gray-100 last:border-b-0`}
+                  className={`cell-hover ${isCopied ? 'copied-flash' : ''} border-b border-gray-100 last:border-b-0`}
                 >
                   <td className="px-4 py-2.5 text-xs text-gray-500 font-medium w-36 align-top">
                     {header}
                   </td>
                   <td
-                    className={`px-4 py-2.5 text-sm ${
-                      isCurrent
-                        ? 'text-gray-900 cursor-pointer'
-                        : 'text-gray-600'
-                    }`}
-                    onClick={() => isCurrent && copyToClipboard(value, cellId)}
-                    title={isCurrent ? 'Клик — скопировать' : ''}
+                    className="px-4 py-2.5 text-sm text-gray-900 cursor-pointer"
+                    onClick={() => copyToClipboard(value, cellId)}
+                    title="Клик — скопировать"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="break-all leading-relaxed">{value || <span className="text-gray-300 italic">—</span>}</span>
@@ -428,10 +417,8 @@ function App() {
       </div>
 
       {/* Content */}
-      <div className="max-w-3xl mx-auto px-4 py-5 space-y-3 fade-in">
-        {renderRow(previousRow, currentIndex - 1, `↑ Предыдущая · строка ${currentIndex}`, false)}
-        {renderRow(currentRow, currentIndex, `Текущая · строка ${currentIndex + 1}`, true)}
-        {renderRow(nextRow, currentIndex + 1, `↓ Следующая · строка ${currentIndex + 2}`, false)}
+      <div className="max-w-3xl mx-auto px-4 py-5 fade-in">
+        {renderRow(currentRow, `Строка ${currentIndex + 1}`)}
       </div>
 
       {/* Footer hint */}
