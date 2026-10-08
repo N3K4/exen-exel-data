@@ -36,18 +36,16 @@ function formatExcelDate(dateCode: { y: number; m: number; d: number }): string 
 function serialToDate(serial: number): { y: number; m: number; d: number } | null {
   if (serial < 1 || serial > 200000) return null;
   
-  // Excel base date: 31 декабря 1899 (serial 1 = 1 января 1900)
-  // Корректировка для бага Excel с високосным 1900 годом
+  // Excel base date: 31 декабря 1899
+  // serial 1 = 1 января 1900
+  // Excel считает 1900 високосным годом (баг), поэтому для serial > 60 нужно вычитать 1
   let adjustedSerial = serial;
   if (serial > 60) {
-    adjustedSerial = serial - 1; // Пропускаем несуществующий 29 февраля 1900
+    adjustedSerial = serial - 1;
   }
   
   const excelEpoch = new Date(Date.UTC(1899, 11, 31));
   const date = new Date(excelEpoch.getTime() + adjustedSerial * 86400000);
-  
-  // Сдвигаем на день вперёд
-  date.setUTCDate(date.getUTCDate() + 1);
   
   const year = date.getUTCFullYear();
   if (year < 1900 || year > 2100) return null;
@@ -64,14 +62,7 @@ function convertNumericDate(cellValue: number): string {
   try {
     const dateCode = XLSX.SSF.parse_date_code(cellValue);
     if (dateCode) {
-      // Сдвигаем на день вперёд
-      const date = new Date(Date.UTC(dateCode.y, dateCode.m - 1, dateCode.d));
-      date.setUTCDate(date.getUTCDate() + 1);
-      return formatExcelDate({
-        y: date.getUTCFullYear(),
-        m: date.getUTCMonth() + 1,
-        d: date.getUTCDate()
-      });
+      return formatExcelDate(dateCode);
     }
   } catch {
     // Fallback
