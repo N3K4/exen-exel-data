@@ -46,6 +46,9 @@ function serialToDate(serial: number): { y: number; m: number; d: number } | nul
   const excelEpoch = new Date(Date.UTC(1899, 11, 31));
   const date = new Date(excelEpoch.getTime() + adjustedSerial * 86400000);
   
+  // Сдвигаем на день вперёд
+  date.setUTCDate(date.getUTCDate() + 1);
+  
   const year = date.getUTCFullYear();
   if (year < 1900 || year > 2100) return null;
   
