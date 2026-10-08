@@ -36,9 +36,15 @@ function formatExcelDate(dateCode: { y: number; m: number; d: number }): string 
 function serialToDate(serial: number): { y: number; m: number; d: number } | null {
   if (serial < 1 || serial > 200000) return null;
   
-  // Excel base date: 30 декабря 1899
-  const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-  const date = new Date(excelEpoch.getTime() + serial * 86400000);
+  // Excel base date: 31 декабря 1899 (serial 1 = 1 января 1900)
+  // Корректировка для бага Excel с високосным 1900 годом
+  let adjustedSerial = serial;
+  if (serial > 60) {
+    adjustedSerial = serial - 1; // Пропускаем несуществующий 29 февраля 1900
+  }
+  
+  const excelEpoch = new Date(Date.UTC(1899, 11, 31));
+  const date = new Date(excelEpoch.getTime() + adjustedSerial * 86400000);
   
   const year = date.getUTCFullYear();
   if (year < 1900 || year > 2100) return null;
@@ -52,15 +58,6 @@ function serialToDate(serial: number): { y: number; m: number; d: number } | nul
 
 // Конвертация ячейки-числа в дату
 function convertNumericDate(cellValue: number): string {
-  try {
-    const dateCode = XLSX.SSF.parse_date_code(cellValue);
-    if (dateCode) {
-      return formatExcelDate(dateCode);
-    }
-  } catch {
-    // Fallback
-  }
-  
   const dateCode = serialToDate(cellValue);
   if (dateCode) {
     return formatExcelDate(dateCode);
@@ -86,7 +83,8 @@ function App() {
 
     reader.onload = (event) => {
       const arrayBuffer = event.target?.result;
-      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true, cellNF: true });
+      // cellDates: false — не конвертируем автоматически, делаем это вручную
+      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: false, cellNF: true });
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
 
@@ -109,10 +107,9 @@ function App() {
           const cellFormat = cell.z || '';
           const isDate = isDateFormat(cellFormat);
 
+          // Все числовые значения с форматом даты конвертируем вручную
           if (cell.t === 'n' && isDate) {
             row.push(convertNumericDate(cell.v));
-          } else if (cell.t === 'd') {
-            row.push(formatDate(cell.v));
           } else {
             row.push(cell.w !== undefined ? String(cell.w) : String(cell.v));
           }
