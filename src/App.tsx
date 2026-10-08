@@ -61,6 +61,22 @@ function serialToDate(serial: number): { y: number; m: number; d: number } | nul
 
 // Конвертация ячейки-числа в дату
 function convertNumericDate(cellValue: number): string {
+  try {
+    const dateCode = XLSX.SSF.parse_date_code(cellValue);
+    if (dateCode) {
+      // Сдвигаем на день вперёд
+      const date = new Date(Date.UTC(dateCode.y, dateCode.m - 1, dateCode.d));
+      date.setUTCDate(date.getUTCDate() + 1);
+      return formatExcelDate({
+        y: date.getUTCFullYear(),
+        m: date.getUTCMonth() + 1,
+        d: date.getUTCDate()
+      });
+    }
+  } catch {
+    // Fallback
+  }
+  
   const dateCode = serialToDate(cellValue);
   if (dateCode) {
     return formatExcelDate(dateCode);
