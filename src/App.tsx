@@ -9,9 +9,10 @@ interface ExcelData {
 // Форматирование даты в читаемый вид (ДД.ММ.ГГГГ)
 function formatDate(value: any): string {
   if (value instanceof Date) {
-    const day = String(value.getDate()).padStart(2, '0');
-    const month = String(value.getMonth() + 1).padStart(2, '0');
-    const year = value.getFullYear();
+    // Используем UTC-методы, чтобы избежать сдвига из-за часовых зон
+    const day = String(value.getUTCDate()).padStart(2, '0');
+    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const year = value.getUTCFullYear();
     return `${day}.${month}.${year}`;
   }
   return String(value);
@@ -20,52 +21,53 @@ function formatDate(value: any): string {
 // Проверка, является ли формат ячейки форматом даты
 function isDateFormat(fmt: string): boolean {
   if (!fmt) return false;
-  // Проверяем наличие символов даты в формате
   return /[dmyDММY]/i.test(fmt) && !/^[#0,.]+$/.test(fmt);
 }
 
 // Форматирование даты из Excel serial number
-function formatExcelDate(dateCode: { y: number; m: number; d: number; H?: number; M?: number; S?: number }): string {
+function formatExcelDate(dateCode: { y: number; m: number; d: number }): string {
   const day = String(dateCode.d).padStart(2, '0');
   const month = String(dateCode.m).padStart(2, '0');
   const year = dateCode.y;
   return `${day}.${month}.${year}`;
 }
 
-// Fallback: конвертация серийного номера Excel в объект даты вручную
-function serialToDate(serial: number): { y: number; m: number; d: number; H: number; M: number; S: number } | null {
+// Fallback: конвертация серийного номера Excel в дату
+function serialToDate(serial: number): { y: number; m: number; d: number } | null {
   if (serial < 1 || serial > 200000) return null;
   
-  // Excel base date: 30 декабря 1899 (с учётом бага Lotus 1-2-3)
-  const excelEpoch = new Date(1899, 11, 30);
-  const date = new Date(excelEpoch.getTime() + serial * 86400000);
+  // Excel base date: 31 декабря 1899
+  // serial 1 = 1 января 1900
+  // Excel считает 1900 високосным годом (баг), поэтому для serial > 60 нужно вычитать 1
+  let adjustedSerial = serial;
+  if (serial > 60) {
+    adjustedSerial = serial - 1;
+  }
   
-  const year = date.getFullYear();
+  const excelEpoch = new Date(Date.UTC(1899, 11, 31));
+  const date = new Date(excelEpoch.getTime() + adjustedSerial * 86400000);
+  
+  const year = date.getUTCFullYear();
   if (year < 1900 || year > 2100) return null;
   
   return {
     y: year,
-    m: date.getMonth() + 1,
-    d: date.getDate(),
-    H: date.getHours(),
-    M: date.getMinutes(),
-    S: date.getSeconds()
+    m: date.getUTCMonth() + 1,
+    d: date.getUTCDate()
   };
 }
 
-// Конвертация ячейки-числа в дату (с fallback)
-function convertNumericDate(cellValue: number, cellFormat: string): string {
-  // Пробуем через SSF
+// Конвертация ячейки-числа в дату
+function convertNumericDate(cellValue: number): string {
   try {
     const dateCode = XLSX.SSF.parse_date_code(cellValue);
     if (dateCode) {
       return formatExcelDate(dateCode);
     }
   } catch {
-    // SSF недоступен — используем fallback
+    // Fallback
   }
   
-  // Fallback: ручная конвертация
   const dateCode = serialToDate(cellValue);
   if (dateCode) {
     return formatExcelDate(dateCode);
@@ -91,7 +93,8 @@ function App() {
 
     reader.onload = (event) => {
       const arrayBuffer = event.target?.result;
-      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true, cellNF: true });
+      // cellDates: false — не конвертируем автоматически, делаем это вручную
+      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: false, cellNF: true });
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
 
@@ -111,18 +114,13 @@ function App() {
             continue;
           }
 
-          // Проверяем формат ячейки — является ли он форматом даты
           const cellFormat = cell.z || '';
           const isDate = isDateFormat(cellFormat);
 
+          // Все числовые значения с форматом даты конвертируем вручную
           if (cell.t === 'n' && isDate) {
-            // Число с форматом даты — конвертируем серийный номер
-            row.push(convertNumericDate(cell.v, cellFormat));
-          } else if (cell.t === 'd') {
-            // Уже объект Date (благодаря cellDates: true)
-            row.push(formatDate(cell.v));
+            row.push(convertNumericDate(cell.v));
           } else {
-            // Обычное значение — используем отформатированную строку если есть
             row.push(cell.w !== undefined ? String(cell.w) : String(cell.v));
           }
         }
@@ -236,7 +234,6 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-sm">
-          {/* Title */}
           <div className="mb-8">
             <div className="flex items-center gap-2.5 mb-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm">
@@ -251,7 +248,6 @@ function App() {
             </p>
           </div>
 
-          {/* Upload button */}
           <label className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg cursor-pointer shadow-sm hover:shadow-md">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5-5 5 5M12 5v12" />
@@ -276,18 +272,15 @@ function App() {
 
   const currentRow = getRow(currentIndex);
 
-  // Row renderer
   const renderRow = (row: string[] | null, label: string) => {
     if (!row) return null;
 
     return (
       <div className="rounded-xl overflow-hidden card-shadow ring-2 ring-blue-200 bg-white">
-        {/* Row label */}
         <div className="px-4 py-2 border-b bg-blue-50 text-blue-900 border-blue-100 text-xs font-medium">
           {label}
         </div>
 
-        {/* Cells */}
         <table className="w-full">
           <tbody>
             {data.headers.map((header, colIdx) => {
@@ -328,11 +321,9 @@ function App() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
       <div className="sticky top-0 z-10 bg-white/90 backdrop-blur-md border-b border-gray-200/80">
         <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            {/* File info */}
             <div className="flex items-center gap-3 min-w-0">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-gray-900 truncate">{fileName}</div>
@@ -351,7 +342,6 @@ function App() {
               </label>
             </div>
 
-            {/* Navigation */}
             <div className="flex items-center gap-1">
               <button
                 onClick={goToFirst}
@@ -416,12 +406,10 @@ function App() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="max-w-3xl mx-auto px-4 py-5 fade-in">
         {renderRow(currentRow, `Строка ${currentIndex + 1}`)}
       </div>
 
-      {/* Footer hint */}
       <div className="max-w-3xl mx-auto px-4 pb-6">
         <div className="text-center">
           <span className="inline-flex items-center gap-1.5 text-xs text-gray-400 bg-gray-100/60 px-3 py-1.5 rounded-full flex-wrap justify-center">
